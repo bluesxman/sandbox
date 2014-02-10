@@ -1,5 +1,5 @@
-(ns bluesxman.sandbox.steering
-  (:require [bluesxman.sandbox.pid :refer :all]))
+(ns sandbox.steering
+  (:require [sandbox.pid :refer :all]))
 
 ;; 60 degrees per second
 (def max-turn-rate (/ Math/PI 3))
@@ -80,12 +80,3 @@
 
 
 (sim-steer 100)
-
-(bound (+ 0.0127 (/ max-black 2)) 0 max-black)
-
-(/ 0.0254 2)
-(normalize-error 7.5)
-
-(sense-line 0.012)
-
-(bound 10 0 10)
