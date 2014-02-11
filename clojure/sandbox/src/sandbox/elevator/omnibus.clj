@@ -1,9 +1,7 @@
 ;; Copied from Laurent Petit's omnibus example:
 ;; http://laurentpetit.github.io/blog/2013/11/05/the-clojure-omnibus/
 
-(ns sandbox.elevator.omnibus)
-
-(ns main
+(ns sandbox.elevator.omnibus
   (:use ring.adapter.jetty
         compojure.core))
 
@@ -29,4 +27,3 @@
 (defn -main []
   (run-jetty app {:port 9090}))
 
-(-main)
