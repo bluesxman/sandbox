@@ -28,18 +28,35 @@
 
 (defroutes app
   (GET "/nextCommand" [] (next-command-handler))
-  (GET "/go?floorToGo=[:floor]" [floor] (println "goto floor " floor))
-  (GET "/userHasEntered" [] (println "user has entered"))
-  (GET "/userHasExited" [] (println "user has exited"))
+  (GET "/call?atFloor=:floor&to=:dir" [floor dir] (println "call on " floor " going " dir))
+  (GET "/go?floorToGo=:floor" [floor] (println "goto floor " floor))
+;;   (GET "/userHasEntered" [] (println "user has entered"))
+;;   (GET "/userHasExited" [] (println "user has exited"))
 ;;   (GET "/reset?cause=:info" [info] (println "info+msg: " info))
 ;;   (GET "/reset" [] (println "reseting..."))
-  ;;(GET "/:unmatched*" [unmatched] (println "unknown request: " unmatched))
+  (GET "/:unmatched:nxt" [unmatched nxt] (println "unknown request: " unmatched nxt))
 ;;   (GET "*" [] (println "unmatched")))
   (GET "*" [] ""))
 
+(def requests (atom []))
+(defn print-requests
+  [req]
+  (println req))
+(defn store-requests
+  [req]
+  (swap! requests conj req))
+
 (def server (run-jetty app {:port 9090 :join? false}))
+(def server (run-jetty print-requests {:port 9090 :join? false}))
+(def server (run-jetty store-requests {:port 9090 :join? false}))
 
 (.stop server)
 ;; (.start server)
 
 ;; (println server)
+
+(swap! requests conj {:foo 1})
+(println @requests)
+
+(count @requests)
+(@requests 2)
