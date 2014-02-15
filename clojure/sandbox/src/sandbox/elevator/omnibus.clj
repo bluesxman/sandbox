@@ -24,6 +24,6 @@
   (GET "/nextCommand" [] (next-command-handler))
   (GET "*"            [] ""))
 
-(defn -main []
-  (run-jetty app {:port 9090}))
+;; (defn -main []
+;;   (run-jetty app {:port 9090}))
 

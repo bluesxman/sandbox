@@ -1,9 +1,70 @@
-;; Copied from Laurent Petit's omnibus example:
-;; http://laurentpetit.github.io/blog/2013/11/05/the-clojure-omnibus/
-
 (ns sandbox.elevator.dropship
   (:require [ring.adapter.jetty :refer :all]
-            [compojure.core :refer :all]))
+            [compojure.core :refer :all]
+            [clojure.core.async :as async]))
+
+(def event-queue (async/chan (async/sliding-buffer 50)))
+
+
+;; planning needs to read and alter the commands.  handler need to remove and provide next-cmd
+;; best data structure????  Try queue for now
+(def commands (ref (clojure.lang.PersistentQueue/EMPTY)))
+
+(defn next-cmd []
+  (dosync
+   (let [head (peek @commands)]
+     (alter commands pop)
+     head)))
+
+(defn reset [qs]
+  (dosync (ref-set commands clojure.lang.PersistentQueue/EMPTY))
+  "elevator reset")
+
+(defn queue-event [e] (async/thread (async/>!! event-queue e)) (str e))
+
+(defn queue-call [qs]
+  (let [[_ floor dir] (re-find #"atFloor=(\d+)&to=(\S+)" qs)]
+    (queue-event [:call (read-string floor) (if (= "UP") :up :down)])))
+
+(defn queue-go [qs]
+  (let [[_ floor] (re-find #"floorToGo=(\d+)" qs)]
+    (queue-event [:go (read-string floor)])))
+
+(defn queue-entered [] (queue-event [:enter]))
+
+(defn queue-exited [] (queue-event [:exit]))
+
+(defroutes handle-requests
+  (GET "/nextCommand" [] (next-cmd))
+  (GET "/call" {qs :query-string} (queue-call qs))
+  (GET "/go" {qs :query-string} (queue-go qs))
+  (GET "/userHasEntered" [] (queue-entered))
+  (GET "/userHasExited" [] (queue-exited))
+  (GET "/reset" {qs :query-string} (reset qs)))
+
+(defn plan []
+  ())
+
+;;;;;;;;;;;;;; Testing
+
+(dosync (dotimes [n 10] (alter commands conj "OPEN" "CLOSE" "UP" "OPEN" "CLOSE" "DOWN")))
+
+(def server (run-jetty handle-requests {:port 9090 :join? false}))
+
+(.stop server)
+
+(async/close! event-queue)
+(def events (loop [events []]
+              (let [e (async/<!! event-queue)]
+                (if e
+                  (recur (conj events e))
+                  events))))
+(eval events)
+
+
+
+;;;;;;;; old omnibus stuff
+
 
 (defn make-omnibus [nb-floors]
   (let [up   (repeat (dec nb-floors) ["OPEN", "CLOSE", "UP"])
@@ -14,7 +75,7 @@
 (defn tick [elevator] (rest elevator))
 (defn next-command [elevator] (first elevator))
 
-(def nb-floors 20)
+(def nb-floors 6)
 (def cabin (atom (make-omnibus nb-floors)))
 (defn next-command-handler []
   (let [new-state (swap! cabin tick)]
@@ -28,27 +89,25 @@
 
 (defroutes app
   (GET "/nextCommand" [] (next-command-handler))
-  (GET "/call?atFloor=:floor&to=:dir" [floor dir] (println "call on " floor " going " dir))
-  (GET "/go?floorToGo=:floor" [floor] (println "goto floor " floor))
-;;   (GET "/userHasEntered" [] (println "user has entered"))
-;;   (GET "/userHasExited" [] (println "user has exited"))
-;;   (GET "/reset?cause=:info" [info] (println "info+msg: " info))
-;;   (GET "/reset" [] (println "reseting..."))
-  (GET "/:unmatched:nxt" [unmatched nxt] (println "unknown request: " unmatched nxt))
-;;   (GET "*" [] (println "unmatched")))
-  (GET "*" [] ""))
+  (GET "/call" {qs :query-string} (println "call " qs))
+  (GET "/go" {qs :query-string} (println "goto floor " qs))
+  (GET "/userHasEntered" [] (println "user has entered"))
+  (GET "/userHasExited" [] (println "user has exited"))
+  (GET "/reset" {qs :query-string} (println "reset" qs) ""))
 
 (def requests (atom []))
+
 (defn print-requests
   [req]
   (println req))
+
 (defn store-requests
   [req]
   (swap! requests conj req))
 
-(def server (run-jetty app {:port 9090 :join? false}))
-(def server (run-jetty print-requests {:port 9090 :join? false}))
-(def server (run-jetty store-requests {:port 9090 :join? false}))
+;; (def server (run-jetty app {:port 9090 :join? false}))
+;; (def server (run-jetty print-requests {:port 9090 :join? false}))
+;; (def server (run-jetty store-requests {:port 9090 :join? false}))
 
 (.stop server)
 ;; (.start server)
