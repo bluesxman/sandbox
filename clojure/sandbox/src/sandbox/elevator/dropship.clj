@@ -5,6 +5,18 @@
 
 (def event-queue (async/chan (async/sliding-buffer 50)))
 
+(def request-chan (async/chan (async/sliding-buffer 50)))
+
+(defn new-world [n-floors]
+  {:calls (vec (repeat n-floors 0))
+   :gotos (vec (repeat n-floors 0))
+   :in-car 0
+   :floor 0
+   :door :closed})
+
+(defn start-world (new-world 6))
+
+(def world (atom start-world))
 
 ;; planning needs to read and alter the commands.  handler need to remove and provide next-cmd
 ;; best data structure????  Try queue for now
@@ -13,11 +25,18 @@
 (defn next-cmd []
   (dosync
    (let [head (peek @commands)]
+     (case head
+       "OPEN" (swap! world assoc :door :open)
+       "CLOSE" (swap! world assoc :door :closed)
+       "UP" (swap! world (fn [w] (assoc w :floor (inc (w :floor)))))
+       "DOWN" (swap! world (fn [w] (assoc w :floor (dec (w :floor))))))
      (alter commands pop)
      head)))
 
 (defn reset [qs]
-  (dosync (ref-set commands clojure.lang.PersistentQueue/EMPTY))
+  (dosync
+   (ref-set commands clojure.lang.PersistentQueue/EMPTY)
+   (reset! world start-world))
   "elevator reset")
 
 (defn queue-event [e] (async/thread (async/>!! event-queue e)) (str e))
@@ -34,7 +53,7 @@
 
 (defn queue-exited [] (queue-event [:exit]))
 
-(defroutes handle-requests
+(defroutes route
   (GET "/nextCommand" [] (next-cmd))
   (GET "/call" {qs :query-string} (queue-call qs))
   (GET "/go" {qs :query-string} (queue-go qs))
@@ -42,8 +61,29 @@
   (GET "/userHasExited" [] (queue-exited))
   (GET "/reset" {qs :query-string} (reset qs)))
 
-(defn plan []
-  ())
+(defn queue-requests [request]
+  (async/thread (async/>!! request-chan request)))
+
+(defn process-requests [num-threads req-chan]
+  (dotimes [n num-threads]
+    (async/thread
+     (loop [r (async/<!! req-chan)]
+       (if r
+         (do
+           (route r)
+           (recur (async/<!! req-chan))))))))
+
+;; when nothing to do, goto middle and stay closed
+;; when empty and called, goto call floor
+;; when occupied take shortest path to all destinations (traveling salesman)
+;; but also open for any calls along the route.
+;; when arrive open remove that floor from destinations and recalc shortest path
+;;
+;; Possible future considerations:
+;;   - Could pay off to pick a longer path that has calls along it that want to go in
+;;   the right direction
+;;   - Probably need to wait for the enter/exit events before closing the door
+(defn plan [] ())
 
 ;;;;;;;;;;;;;; Testing
 
@@ -54,16 +94,17 @@
 (.stop server)
 
 (async/close! event-queue)
-(def events (loop [events []]
-              (let [e (async/<!! event-queue)]
-                (if e
-                  (recur (conj events e))
-                  events))))
+(def events
+  (loop [events []]
+    (let [e (async/<!! event-queue)]
+      (if e
+        (recur (conj events e))
+        events))))
 (eval events)
 
 
 
-;;;;;;;; old omnibus stuff
+;;;;;;;; old omnibus stuff and experiments with ring
 
 
 (defn make-omnibus [nb-floors]
