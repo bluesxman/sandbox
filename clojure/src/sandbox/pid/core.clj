@@ -1,4 +1,4 @@
-(ns sandbox.pid)
+(ns sandbox.pid.core)
 
 (defn- next-pid
   [gains tot-err last-err last-time]

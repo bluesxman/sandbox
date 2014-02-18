@@ -1,4 +1,5 @@
 (ns sandbox.data.tree)
+
 (def tree
   {:root {:val 1
           :a {:val 2

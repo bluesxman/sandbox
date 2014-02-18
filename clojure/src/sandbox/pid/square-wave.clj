@@ -1,4 +1,4 @@
-(ns sandbox.square-wave
+(ns sandbox.pid.square-wave
   (:require [sandbox.pid :refer :all]))
 
 (defn- next-proc

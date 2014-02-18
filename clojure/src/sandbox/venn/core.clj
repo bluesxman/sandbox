@@ -1,4 +1,4 @@
-(ns venn.core
+(ns sandbox.venn.core
   (:require [clojure.set :refer :all]))
 
 (def entities #{:a :b :c :d :e})

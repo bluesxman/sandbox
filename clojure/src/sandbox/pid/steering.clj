@@ -1,4 +1,4 @@
-(ns sandbox.steering
+(ns sandbox.pid.steering
   (:require [sandbox.pid :refer :all]))
 
 ;; 60 degrees per second

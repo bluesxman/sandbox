@@ -14,7 +14,7 @@
 (defn tick [elevator] (rest elevator))
 (defn next-command [elevator] (first elevator))
 
-(def nb-floors 20)
+(def nb-floors 6)
 (def cabin (atom (make-omnibus nb-floors)))
 (defn next-command-handler []
   (let [new-state (swap! cabin tick)]
