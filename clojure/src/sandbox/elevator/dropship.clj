@@ -13,12 +13,15 @@
 
 
 ;;;;;;;;;;;;;;;;;;;;;
-;; Data;
+;; Data
 ;;;;;;;;;;;;;;;;;;;;;
 
 (def default-path {:path [(int (/ num-floors 2))] :cost 0})
 (def best-path (ref default-path))
 
+
+;; TODO: using a tuple for the elements in calls is very awkward
+;; better to split calls into multiple vectors (e.g. :calls, :ups, :downs)
 (def start-world
   {:calls (vec (repeat num-floors [0 :none])) ;; WARN: we're only recording the last direction!
    :gotos (vec (repeat num-floors 0))
@@ -100,6 +103,7 @@
 (leave)
 
 (call "atFloor=0&to=UP")
+(go "floorToGo=3")
 
 (defn reset [qs]
   (reset! world start-world)
@@ -149,6 +153,20 @@
         total
         (recur (iter floor) (+ total (orders-at w order-type floor)))))))
 
+(defn all-orders-from [w up?]
+  (let [from (w :floor)
+        calls (orders-from w :call up? from)
+        gotos (orders-from w :goto up? from)]
+    (+ calls gotos)))
+
+(defn count-orders [w]
+  (let [calls (apply + (map #(% 0) (w :calls)))
+        gotos (apply + (w :gotos))]
+    (+ calls gotos)))
+
+(eval @world)
+(count-orders @world)
+
 (defn next-order [w order-type up? from]
   "finds the floor of the next order after the floor from"
   (let [iter (if up? inc dec)
@@ -179,38 +197,28 @@
         (next-stop w up? floor)
         (recur (async/<!! wc))))))
 
-(defn set-waypoint [w up?]
-  (if w
-      (let [floor (w :floor)
-            nxt-up? (case floor
-                      0 true
-                      (dec num-floors) false
-                      up?)
-            waypoint (next-stop w nxt-up? floor)]
-        (if (nil? waypoint) ;; then turn around
-          (let [wp (next-stop w (not nxt-up?))]
-            (if (nil? wp)
-              (int (/ num-floors 2))
-              (do
-                (dosync (al))))))
-        (dosync (alter best-path assoc :path [waypoint]))
-        nxt-up?)))
-
-(eval @world)
-(set-waypoint @world true)
-(next-stop @world true 3)
-(@best-path :path)
+;; If no orders then go to middle
+;; If at top or bottom or no orders in current direction, reverse to next
+;; Else goto next in current direction
+(defn next-move [w up?]
+  (let [floor (w :floor)]
+    (if (zero? (count-orders w))
+      (let [middle (int (/ num-floors 2))
+            next-up? (< floor middle)]
+        [middle next-up?])
+      (if (or
+           (zero? floor)
+           (= floor (dec num-floors))
+           (zero? (all-orders-from w up?)))
+        [(next-stop w (not up?) floor) (not up?)]
+        [(next-stop w up? floor) up?]))))
 
 (defn plan-standard [wc]
   (loop [w (async/<!! wc)  ;; exits when channel is closed
          up? true]
     (if w
       (let [floor (w :floor)
-            nxt-up? (case floor
-                      0 true
-                      (dec num-floors) false
-                      up?)
-            waypoint (next-stop w nxt-up? floor)]
+            [waypoint nxt-up?] (next-move w up?)]
         (dosync (alter best-path assoc :path [waypoint]))
         (recur (async/<!! wc) nxt-up?)))))
 
