@@ -1,8 +1,4 @@
-;; Anything you type in here will be executed
-;; immediately with the results shown on the
-;; right.
-
-
+(ns sandbox.data.tree)
 (def tree
   {:root {:val 1
           :a {:val 2
