@@ -16,7 +16,7 @@
 ;; Data;
 ;;;;;;;;;;;;;;;;;;;;;
 
-(def empty-path {:path [(int (/ num-floors 2))] :cost 0})
+(def default-path {:path [(int (/ num-floors 2))] :cost 0})
 (def best-path (ref default-path))
 
 (def start-world
@@ -37,6 +37,11 @@
 ;; Functions
 ;;;;;;;;;;;;;;;;;;;;;
 
+(defn notify-change [w]
+  (async/thread (async/>!! world-chan w)))
+
+;; next-cmd helpers ;;;;;;;;;;
+
 (defn update-world [f & args]
   (async/thread (async/>!! world-chan (swap! world f args))))
 
@@ -44,58 +49,73 @@
   (= (w :door) :open))
 
 (defn exiting? [w]
-  (zero? (get-in w [:gotos (w :floor)])))
+  (pos? (get-in w [:gotos (w :floor)])))
 
 (defn leave []
   (swap! world assoc :door :closed)
-  (close-cmd))
+  close-cmd)
 
-(defn at-goal? [w p]
+(defn at-waypoint? [w p]
   (= (w :floor) (first p)))
 
 (defn arrive []
-  (dosync (alter best-path rest))
+  (dosync
+   (let [new-path (rest (@best-path :path))]
+     (alter best-path assoc :path new-path)))
   (swap! world assoc :door :open)
-  (open-cmd))
+  open-cmd)
 
 (defn travel [w]
   (dosync
-   (let [goal (first @best-path)]
+   (let [goal (first (@best-path :path))]
      (if (> goal (w :floor))
        (do
          (swap! world update-in [:floor] inc)
-         (up-cmd))
+         up-cmd)
        (do
          (swap! world update-in [:floor] dec)
-         (down-cmd))))))
+         down-cmd)))))
+
+(travel @world)
+
+;; request handler targets ;;;;;;;;;;
 
 (defn next-cmd []
   (let [w @world          ;; Take a snapshot of the world and reason on it
-        p @best-path]     ;; we know p was made for this world
+        p (@best-path :path)]     ;; we know p was made for this world
     (if (door-open? w)
       (if (exiting? w)
         open-cmd ;; just repeat open until all passengers exit
         (leave)) ;; WARN: not handling special case of no calls AND no gotos
-      (if (at-goal? w p)
+      (if (at-waypoint? w p)
         (arrive)
         (travel w)))))
 
+(next-cmd)
+(eval @world)
+(door-open? @world)
+(@best-path :path)
+(at-waypoint? @world (@best-path :path))
+(exiting? @world)
+(leave)
+
+(call "atFloor=0&to=UP")
+
 (defn reset [qs]
   (reset! world start-world)
-  (reset! best-path empty-path))
+  (dosync (ref-set best-path default-path)))
 
-;; WARN: need to make call and go force the planners to stop and use the new world
 (defn call [qs]
   (let [[_ fs ds] (re-find #"atFloor=(\d+)&to=(\S+)" qs)
         floor (read-string fs)
         dir (if (= "UP" ds) :up :down)
-        update (fn [[cnt d]] (vec (inc cnt) dir))]
-    (swap! world #(update-in % [:calls floor] update))))
+        update (fn [[cnt d]] (vector (inc cnt) dir))]
+    (notify-change (swap! world #(update-in % [:calls floor] update)))))
 
 (defn go [qs]
   (let [[_ floor-str] (re-find #"floorToGo=(\d+)" qs)
         floor (read-string floor-str)]
-    (swap! world #(update-in % [:gotos floor] inc))))
+    (notify-change (swap! world #(update-in % [:gotos floor] inc)))))
 
 (defn enter []
   (swap! world #(update-in % [:calls (% :floor) 0] dec)))
@@ -111,6 +131,104 @@
   (GET "/userHasExited" [] (exit) "")
   (GET "/reset" {qs :query-string} (reset qs) ""))
 
+;; planning ;;;;;;;;;;
+
+(defn orders-at [w order-type floor]
+  (get-in w
+          (case order-type
+            :call [:calls floor 0]
+            :goto [:gotos floor])))
+
+(defn orders-from [w order-type up? from]
+  "sums the count of orders after from in the direction indicated by up?"
+  (let [iter (if up? inc dec)
+        limit (if up? (dec num-floors) 0)]
+    (loop [floor (iter from)
+           total 0]
+      (if (= floor limit)
+        total
+        (recur (iter floor) (+ total (orders-at w order-type floor)))))))
+
+(defn next-order [w order-type up? from]
+  "finds the floor of the next order after the floor from"
+  (let [iter (if up? inc dec)
+        limit (if up? (dec num-floors) 0)]
+    (loop [floor (iter from)]
+      (cond
+       (pos? (orders-at w order-type floor)) floor
+       (= limit floor) nil
+       :else (recur (iter floor))))))
+
+(defn next-stop [w up? from]
+  (let [nxt-call (next-order w :call up? from)
+        nxt-goto (next-order w :goto up? from)]
+    (cond
+     (and (nil? nxt-call) (nil? nxt-goto)) nil
+     (nil? nxt-call) nxt-goto
+     (nil? nxt-goto) nxt-call
+     :else ((if up? min max) nxt-call nxt-goto))))
+
+;; assumes planning only needed when go or call events occur
+(defn plan-simple [wc]
+  (loop [w (async/<!! wc)]  ;; exits when channel is closed
+    (if w
+      (let [floor (w :floor)
+            above (+ (map #(orders-from w % true floor) [:call :goto]))
+            below (+ (map #(orders-from w % false floor) [:call :goto]))
+            up? (> above below)]
+        (next-stop w up? floor)
+        (recur (async/<!! wc))))))
+
+(defn set-waypoint [w up?]
+  (if w
+      (let [floor (w :floor)
+            nxt-up? (case floor
+                      0 true
+                      (dec num-floors) false
+                      up?)
+            waypoint (next-stop w nxt-up? floor)]
+        (if (nil? waypoint) ;; then turn around
+          (let [wp (next-stop w (not nxt-up?))]
+            (if (nil? wp)
+              (int (/ num-floors 2))
+              (do
+                (dosync (al))))))
+        (dosync (alter best-path assoc :path [waypoint]))
+        nxt-up?)))
+
+(eval @world)
+(set-waypoint @world true)
+(next-stop @world true 3)
+(@best-path :path)
+
+(defn plan-standard [wc]
+  (loop [w (async/<!! wc)  ;; exits when channel is closed
+         up? true]
+    (if w
+      (let [floor (w :floor)
+            nxt-up? (case floor
+                      0 true
+                      (dec num-floors) false
+                      up?)
+            waypoint (next-stop w nxt-up? floor)]
+        (dosync (alter best-path assoc :path [waypoint]))
+        (recur (async/<!! wc) nxt-up?)))))
+
+
+;;;;;;;;;;;;;; Testing
+(defn restart []
+  (.stop server)
+  (async/close! world-chan)
+  (reset ""))
+
+(restart)
+(def world-chan (async/chan))
+
+(def server (run-jetty handle-requests {:port 9090 :join? false}))
+(def planner (future (plan-standard world-chan)))
+
+(eval @world)
+
 ;; when nothing to do, goto middle and stay closed
 ;; when empty and called, goto call floor
 ;; when occupied take shortest path to all destinations (traveling salesman)
@@ -122,95 +240,12 @@
 ;;   the right direction
 ;;   - Probably need to wait for the enter/exit events before closing the door
 
-(defn submit-world
-  [w tp]
-  ())
+;; (defn submit-world
+;;   [w tp]
+;;   ())
 
-(defn plan [wc]
-  (loop [tp (Executors/newFixedThreadPool num-plan-threads)
-         w (async/<!! wc)]
-    (if w
-      (recur (submit-world w tp) (async/<!! wc)))))
-
-
-(defn next-stop [up])
-
-(defn plan-simple [wc]
-  (loop [w (async/<!! wc)]
-    (if w
-      (let [floor (w :floor)
-            above (+ (count-calls :above w) (coumt-gotos :above w))
-            below (+ (count-calls :below w) (count-gotos :below w))]
-        (next-stop (if (> above below)))
-        (recur (submit-world w tp) (async/<!! wc))))))
-
-
-
-;;;;;;;;;;;;;; Testing
-
-(def server (run-jetty handle-requests {:port 9090 :join? false}))
-
-(.stop server)
-
-(eval @world)
-(eval @best-path)
-
-
-
-
-
-;;;;;;;; old omnibus stuff and experiments with ring
-
-(defn make-omnibus [nb-floors]
-  (let [up   (repeat (dec nb-floors) ["OPEN", "CLOSE", "UP"])
-        down (repeat (dec nb-floors) ["OPEN", "CLOSE", "DOWN"])
-        up-then-down (flatten (concat up down))]
-    (concat ["NOTHING"] (cycle up-then-down))))
-
-(defn tick [elevator] (rest elevator))
-(defn next-command [elevator] (first elevator))
-
-(def nb-floors 6)
-(def cabin (atom (make-omnibus nb-floors)))
-(defn next-command-handler []
-  (let [new-state (swap! cabin tick)]
-    (next-command new-state)))
-
-;; GET /call?atFloor=[0-5]&to=[UP|DOWN]
-;; GET /go?floorToGo=[0-5]
-;; GET /userHasEntered
-;; GET /userHasExited
-;; GET /reset?cause=information+message
-
-(defroutes app
-  (GET "/nextCommand" [] (next-command-handler))
-  (GET "/call" {qs :query-string} (println "call " qs))
-  (GET "/go" {qs :query-string} (println "goto floor " qs))
-  (GET "/userHasEntered" [] (println "user has entered"))
-  (GET "/userHasExited" [] (println "user has exited"))
-  (GET "/reset" {qs :query-string} (println "reset" qs) ""))
-
-(def requests (atom []))
-
-(defn print-requests
-  [req]
-  (println req))
-
-(defn store-requests
-  [req]
-  (swap! requests conj req))
-
-;; (def server (run-jetty app {:port 9090 :join? false}))
-;; (def server (run-jetty print-requests {:port 9090 :join? false}))
-;; (def server (run-jetty store-requests {:port 9090 :join? false}))
-
-(.stop server)
-;; (.start server)
-
-;; (println server)
-
-(swap! requests conj {:foo 1})
-(println @requests)
-
-(count @requests)
-(@requests 2)
+;; (defn plan [wc]
+;;   (loop [tp (Executors/newFixedThreadPool num-plan-threads)
+;;          w (async/<!! wc)]
+;;     (if w
+;;       (recur (submit-world w tp) (async/<!! wc)))))
