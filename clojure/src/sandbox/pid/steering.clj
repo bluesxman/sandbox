@@ -1,5 +1,5 @@
 (ns sandbox.pid.steering
-  (:require [sandbox.pid :refer :all]))
+  (:require [sandbox.pid.core :refer :all]))
 
 ;; 60 degrees per second
 (def max-turn-rate (/ Math/PI 3))
