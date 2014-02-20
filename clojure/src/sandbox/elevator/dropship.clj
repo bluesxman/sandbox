@@ -16,9 +16,6 @@
 ;; Data
 ;;;;;;;;;;;;;;;;;;;;;
 
-(def default-path {:path [(int (/ num-floors 2))] :cost 0})
-(def best-path (ref default-path))
-
 
 ;; TODO: using a tuple for the elements in calls is very awkward
 ;; better to split calls into multiple vectors (e.g. :calls, :ups, :downs)
@@ -30,11 +27,14 @@
 (def world (atom start-world))
 (def world-chan (async/chan))
 
+(def default-plan {:path [(int (/ num-floors 2))] :cost 0 :world start-world})
+(def best-plan (atom default-plan))
+
 (def open-cmd "OPEN")
 (def close-cmd "CLOSE")
 (def up-cmd "UP")
 (def down-cmd "DOWN")
-
+(def nothing-cmd "NOTHING")
 
 ;;;;;;;;;;;;;;;;;;;;;
 ;; Functions
@@ -44,9 +44,6 @@
   (async/thread (async/>!! world-chan w)))
 
 ;; next-cmd helpers ;;;;;;;;;;
-
-(defn update-world [f & args]
-  (async/thread (async/>!! world-chan (swap! world f args))))
 
 (defn door-open? [w]
   (= (w :door) :open))
@@ -58,56 +55,40 @@
   (swap! world assoc :door :closed)
   close-cmd)
 
-(defn at-waypoint? [w p]
-  (= (w :floor) (first p)))
+(defn at-waypoint? [w goal]
+  (= (w :floor) goal))
 
+;; WARN: should use the enter exit events or not?  website says all exit at once...
+;; if not then arrive should also change :gotos
 (defn arrive []
-  (dosync
-   (let [new-path (rest (@best-path :path))]
-     (alter best-path assoc :path new-path)))
-  (swap! world assoc :door :open)
-  open-cmd)
+  (letfn [(update [w]
+                  (let [floor (w :floor)
+                        gotos (assoc (w :gotos) floor 0)]
+                    (assoc w :door :open :gotos gotos)))]
+    (notify-change (swap! world update))
+    open-cmd))
 
-(defn travel [w]
-  (dosync
-   (let [goal (first (@best-path :path))]
-     (if (> goal (w :floor))
-       (do
-         (swap! world update-in [:floor] inc)
-         up-cmd)
-       (do
-         (swap! world update-in [:floor] dec)
-         down-cmd)))))
-
-(travel @world)
+(defn travel [w goal]
+  (let [floor (w :floor)]
+    (if (= goal floor)
+      nothing-cmd ;; should not happen.  arrive should have been called
+      (let [[iter cmd] (if (> goal floor) [inc up-cmd] [dec down-cmd])]
+        (swap! world update-in [:floor] iter)
+        cmd))))
 
 ;; request handler targets ;;;;;;;;;;
 
 (defn next-cmd []
   (let [w @world          ;; Take a snapshot of the world and reason on it
-        p (@best-path :path)]     ;; we know p was made for this world
+        goal (first (@best-plan :path))]     ;; we know p was made for this world
     (if (door-open? w)
-      (if (exiting? w)
-        open-cmd ;; just repeat open until all passengers exit
-        (leave)) ;; WARN: not handling special case of no calls AND no gotos
-      (if (at-waypoint? w p)
+      (leave)
+      (if (at-waypoint? w goal)
         (arrive)
-        (travel w)))))
-
-(next-cmd)
-(eval @world)
-(door-open? @world)
-(@best-path :path)
-(at-waypoint? @world (@best-path :path))
-(exiting? @world)
-(leave)
-
-(call "atFloor=0&to=UP")
-(go "floorToGo=3")
+        (travel w goal)))))
 
 (defn reset [qs]
-  (reset! world start-world)
-  (dosync (ref-set best-path default-path)))
+  (notify-change (reset! world start-world)))
 
 (defn call [qs]
   (let [[_ fs ds] (re-find #"atFloor=(\d+)&to=(\S+)" qs)
@@ -121,18 +102,18 @@
         floor (read-string floor-str)]
     (notify-change (swap! world #(update-in % [:gotos floor] inc)))))
 
-(defn enter []
-  (swap! world #(update-in % [:calls (% :floor) 0] dec)))
+;; (defn enter []
+;;   (swap! world #(update-in % [:calls (% :floor) 0] dec)))
 
-(defn exit []
-  (swap! world #(update-in % [:gotos (% :floor)] dec)))
+;; (defn exit []
+;;   (swap! world #(update-in % [:gotos (% :floor)] dec)))
 
 (defroutes handle-requests
   (GET "/nextCommand" [] (next-cmd))
   (GET "/call" {qs :query-string} (call qs) "")
   (GET "/go" {qs :query-string} (go qs) "")
-  (GET "/userHasEntered" [] (enter) "")
-  (GET "/userHasExited" [] (exit) "")
+  (GET "/userHasEntered" [] "")
+  (GET "/userHasExited" [] "")
   (GET "/reset" {qs :query-string} (reset qs) ""))
 
 ;; planning ;;;;;;;;;;
@@ -146,12 +127,16 @@
 (defn orders-from [w order-type up? from]
   "sums the count of orders after from in the direction indicated by up?"
   (let [iter (if up? inc dec)
-        limit (if up? (dec num-floors) 0)]
+        limit (if up? num-floors -1)]
     (loop [floor (iter from)
            total 0]
       (if (= floor limit)
         total
         (recur (iter floor) (+ total (orders-at w order-type floor)))))))
+
+(orders-from @world :call false 3)
+
+(get-in @world [:calls 0 0])
 
 (defn all-orders-from [w up?]
   (let [from (w :floor)
@@ -163,9 +148,6 @@
   (let [calls (apply + (map #(% 0) (w :calls)))
         gotos (apply + (w :gotos))]
     (+ calls gotos)))
-
-(eval @world)
-(count-orders @world)
 
 (defn next-order [w order-type up? from]
   "finds the floor of the next order after the floor from"
@@ -186,17 +168,6 @@
      (nil? nxt-goto) nxt-call
      :else ((if up? min max) nxt-call nxt-goto))))
 
-;; assumes planning only needed when go or call events occur
-(defn plan-simple [wc]
-  (loop [w (async/<!! wc)]  ;; exits when channel is closed
-    (if w
-      (let [floor (w :floor)
-            above (+ (map #(orders-from w % true floor) [:call :goto]))
-            below (+ (map #(orders-from w % false floor) [:call :goto]))
-            up? (> above below)]
-        (next-stop w up? floor)
-        (recur (async/<!! wc))))))
-
 ;; If no orders then go to middle
 ;; If at top or bottom or no orders in current direction, reverse to next
 ;; Else goto next in current direction
@@ -213,15 +184,33 @@
         [(next-stop w (not up?) floor) (not up?)]
         [(next-stop w up? floor) up?]))))
 
+(defn iter-plan [plan]
+  (let [path (plan :path)]
+    (if (> (count path) 1)
+      (assoc plan :path (rest path))
+      plan)))
+
+;; assumes only called with :calls or :gotos change
+;; if 1 waypoint left, leave it there, else remove head to procede with plan
+;; start replanning
 (defn plan-standard [wc]
   (loop [w (async/<!! wc)  ;; exits when channel is closed
          up? true]
     (if w
+      (swap! best-plan iter-plan)
       (let [floor (w :floor)
             [waypoint nxt-up?] (next-move w up?)]
-        (dosync (alter best-path assoc :path [waypoint]))
+        (swap! best-plan assoc :path [waypoint] :world w)
         (recur (async/<!! wc) nxt-up?)))))
 
+(eval @best-plan)
+(eval @world)
+(next-cmd)
+
+(async/>!! world-chan @world)
+
+(next-move @world false)
+(all-orders-from @world false)
 
 ;;;;;;;;;;;;;; Testing
 (defn restart []
@@ -236,6 +225,7 @@
 (def planner (future (plan-standard world-chan)))
 
 (eval @world)
+(async/>!! world-chan)
 
 ;; when nothing to do, goto middle and stay closed
 ;; when empty and called, goto call floor
