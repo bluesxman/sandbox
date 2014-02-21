@@ -63,8 +63,12 @@
 (defn arrive []
   (letfn [(update [w]
                   (let [floor (w :floor)
-                        gotos (assoc (w :gotos) floor 0)]
-                    (assoc w :door :open :gotos gotos)))]
+                        gotos (assoc (w :gotos) floor 0)
+                        calls (assoc-in (w :calls) [floor 0] 0)]
+                    (assoc w
+                      :door :open
+                      :calls calls
+                      :gotos gotos)))]
     (notify-change (swap! world update))
     open-cmd))
 
@@ -87,8 +91,17 @@
         (arrive)
         (travel w goal)))))
 
+(eval @world)
+(eval @best-plan)
+(next-cmd)
+(door-open? @world)
+(first (@best-plan :path))
+(at-waypoint? @world 0)
+(arrive)
+
 (defn reset [qs]
-  (notify-change (reset! world start-world)))
+  (notify-change (reset! world start-world))
+  (println "reseting: " qs))
 
 (defn call [qs]
   (let [[_ fs ds] (re-find #"atFloor=(\d+)&to=(\S+)" qs)
@@ -134,7 +147,7 @@
         total
         (recur (iter floor) (+ total (orders-at w order-type floor)))))))
 
-(orders-from @world :call false 3)
+(orders-from @world :call true 3)
 
 (get-in @world [:calls 0 0])
 
@@ -163,7 +176,7 @@
   (let [nxt-call (next-order w :call up? from)
         nxt-goto (next-order w :goto up? from)]
     (cond
-     (and (nil? nxt-call) (nil? nxt-goto)) nil
+     (and (nil? nxt-call) (nil? nxt-goto)) (int (/ num-floors 2))
      (nil? nxt-call) nxt-goto
      (nil? nxt-goto) nxt-call
      :else ((if up? min max) nxt-call nxt-goto))))
@@ -178,11 +191,16 @@
             next-up? (< floor middle)]
         [middle next-up?])
       (if (or
-           (zero? floor)
-           (= floor (dec num-floors))
+           (and (zero? floor) (not up?))
+           (and (= floor (dec num-floors)) up?)
            (zero? (all-orders-from w up?)))
         [(next-stop w (not up?) floor) (not up?)]
         [(next-stop w up? floor) up?]))))
+
+(next-move p-world false)
+(eval p-world)
+(count-orders p-world)
+(next-stop p-world true 0)
 
 (defn iter-plan [plan]
   (let [path (plan :path)]
@@ -196,12 +214,15 @@
 (defn plan-standard [wc]
   (loop [w (async/<!! wc)  ;; exits when channel is closed
          up? true]
+    (println "got world")
     (if w
-      (swap! best-plan iter-plan)
-      (let [floor (w :floor)
-            [waypoint nxt-up?] (next-move w up?)]
-        (swap! best-plan assoc :path [waypoint] :world w)
-        (recur (async/<!! wc) nxt-up?)))))
+      (do
+        (swap! best-plan iter-plan)
+        (let [floor (w :floor)
+              [waypoint nxt-up?] (next-move w up?)]
+          (swap! best-plan assoc :path [waypoint] :world w)
+          (recur (async/<!! wc) nxt-up?)))
+      (println "exiting planning"))))
 
 (eval @best-plan)
 (eval @world)
@@ -209,23 +230,36 @@
 
 (async/>!! world-chan @world)
 
+(next-move @world true)
 (next-move @world false)
+
 (all-orders-from @world false)
 
 ;;;;;;;;;;;;;; Testing
-(defn restart []
+(defn shutdown []
   (.stop server)
-  (async/close! world-chan)
-  (reset ""))
+  (async/close! world-chan))
 
-(restart)
+(shutdown)
 (def world-chan (async/chan))
+(def planner (future (plan-standard world-chan)))
+(reset "")
 
 (def server (run-jetty handle-requests {:port 9090 :join? false}))
-(def planner (future (plan-standard world-chan)))
 
 (eval @world)
-(async/>!! world-chan)
+(eval @best-plan)
+(async/>!! world-chan @world)
+
+(def p-world (@best-plan :world))
+(next-move p-world false)
+
+(call "call?atFloor=1&to=UP")
+(next-cmd)
+(call "call?atFloor=0&to=UP")
+(next-cmd)
+(next-cmd)
+(next-cmd)
 
 ;; when nothing to do, goto middle and stay closed
 ;; when empty and called, goto call floor
