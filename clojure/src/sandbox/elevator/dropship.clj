@@ -147,7 +147,7 @@
         total
         (recur (iter floor) (+ total (orders-at w order-type floor)))))))
 
-(orders-from @world :call true 3)
+(orders-from @world :call false 3)
 
 (get-in @world [:calls 0 0])
 
@@ -161,6 +161,8 @@
   (let [calls (apply + (map #(% 0) (w :calls)))
         gotos (apply + (w :gotos))]
     (+ calls gotos)))
+
+(count-orders @world)
 
 (defn next-order [w order-type up? from]
   "finds the floor of the next order after the floor from"
@@ -212,18 +214,24 @@
 ;; if 1 waypoint left, leave it there, else remove head to procede with plan
 ;; start replanning
 (defn plan-standard [wc]
-  (loop [w (async/<!! wc)  ;; exits when channel is closed
-         up? true]
-    (println "got world")
-    (if w
+  (try
+    (loop [w (async/<!! wc)  ;; exits when channel is closed
+           up? true]
+      (println "got world")
+      (if w
+        (do
+          (swap! best-plan iter-plan)
+          (let [floor (w :floor)
+                [waypoint nxt-up?] (next-move w up?)]
+            (swap! best-plan assoc :path [waypoint] :world w)
+            (recur (async/<!! wc) nxt-up?)))
+        (println "Channel closed.  Exiting Planner.")))
+    (catch Exception e
       (do
-        (swap! best-plan iter-plan)
-        (let [floor (w :floor)
-              [waypoint nxt-up?] (next-move w up?)]
-          (swap! best-plan assoc :path [waypoint] :world w)
-          (recur (async/<!! wc) nxt-up?)))
-      (println "exiting planning"))))
+        (shutdown)
+        (str (.toString e "\n\nworld=" @world "\\nbest-plan=" @best-plan))))))
 
+(println @world)
 (eval @best-plan)
 (eval @world)
 (next-cmd)
@@ -245,6 +253,9 @@
 (def planner (future (plan-standard world-chan)))
 (reset "")
 
+(@planner)
+(future-done? planner)
+
 (def server (run-jetty handle-requests {:port 9090 :join? false}))
 
 (eval @world)
@@ -253,6 +264,9 @@
 
 (def p-world (@best-plan :world))
 (next-move p-world false)
+(eval p-world)
+
+(next-move @world false)
 
 (call "call?atFloor=1&to=UP")
 (next-cmd)
@@ -260,6 +274,8 @@
 (next-cmd)
 (next-cmd)
 (next-cmd)
+
+(async/<!! world-chan)
 
 ;; when nothing to do, goto middle and stay closed
 ;; when empty and called, goto call floor
