@@ -138,16 +138,16 @@
             :goto [:gotos floor])))
 
 (defn orders-from [w order-type up? from]
-  "sums the count of orders after from in the direction indicated by up?"
+  "sums the count of orders starting at from in the direction indicated by up?"
   (let [iter (if up? inc dec)
         limit (if up? num-floors -1)]
-    (loop [floor (iter from)
+    (loop [floor from
            total 0]
       (if (= floor limit)
         total
         (recur (iter floor) (+ total (orders-at w order-type floor)))))))
 
-(orders-from @world :call false 3)
+(orders-from @world :call true 0)
 
 (get-in @world [:calls 0 0])
 
@@ -168,7 +168,7 @@
   "finds the floor of the next order after the floor from"
   (let [iter (if up? inc dec)
         limit (if up? (dec num-floors) 0)]
-    (loop [floor (iter from)]
+    (loop [floor from]
       (cond
        (pos? (orders-at w order-type floor)) floor
        (= limit floor) nil
@@ -201,8 +201,10 @@
 
 (next-move p-world false)
 (eval p-world)
-(count-orders p-world)
+(count-orders @world)
 (next-stop p-world true 0)
+(all-orders-from @world true)
+
 
 (defn iter-plan [plan]
   (let [path (plan :path)]
@@ -229,7 +231,7 @@
     (catch Exception e
       (do
         (shutdown)
-        (str (.toString e "\n\nworld=" @world "\\nbest-plan=" @best-plan))))))
+        (println (.toString e "\n\nworld=" @world "\\nbest-plan=" @best-plan))))))
 
 (println @world)
 (eval @best-plan)
@@ -252,9 +254,6 @@
 (def world-chan (async/chan))
 (def planner (future (plan-standard world-chan)))
 (reset "")
-
-(@planner)
-(future-done? planner)
 
 (def server (run-jetty handle-requests {:port 9090 :join? false}))
 
