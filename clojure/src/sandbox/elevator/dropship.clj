@@ -91,14 +91,6 @@
         (arrive)
         (travel w goal)))))
 
-(eval @world)
-(eval @best-plan)
-(next-cmd)
-(door-open? @world)
-(first (@best-plan :path))
-(at-waypoint? @world 0)
-(arrive)
-
 (defn reset [qs]
   (notify-change (reset! world start-world))
   (println "reseting: " qs))
@@ -147,10 +139,6 @@
         total
         (recur (iter floor) (+ total (orders-at w order-type floor)))))))
 
-(orders-from @world :call true 0)
-
-(get-in @world [:calls 0 0])
-
 (defn all-orders-from [w up?]
   (let [from (w :floor)
         calls (orders-from w :call up? from)
@@ -161,8 +149,6 @@
   (let [calls (apply + (map #(% 0) (w :calls)))
         gotos (apply + (w :gotos))]
     (+ calls gotos)))
-
-(count-orders @world)
 
 (defn next-order [w order-type up? from]
   "finds the floor of the next order after the floor from"
@@ -199,13 +185,6 @@
         [(next-stop w (not up?) floor) (not up?)]
         [(next-stop w up? floor) up?]))))
 
-(next-move p-world false)
-(eval p-world)
-(count-orders @world)
-(next-stop p-world true 0)
-(all-orders-from @world true)
-
-
 (defn iter-plan [plan]
   (let [path (plan :path)]
     (if (> (count path) 1)
@@ -233,18 +212,6 @@
         (shutdown)
         (println (.toString e "\n\nworld=" @world "\\nbest-plan=" @best-plan))))))
 
-(println @world)
-(eval @best-plan)
-(eval @world)
-(next-cmd)
-
-(async/>!! world-chan @world)
-
-(next-move @world true)
-(next-move @world false)
-
-(all-orders-from @world false)
-
 ;;;;;;;;;;;;;; Testing
 (defn shutdown []
   (.stop server)
@@ -254,45 +221,4 @@
 (def world-chan (async/chan))
 (def planner (future (plan-standard world-chan)))
 (reset "")
-
 (def server (run-jetty handle-requests {:port 9090 :join? false}))
-
-(eval @world)
-(eval @best-plan)
-(async/>!! world-chan @world)
-
-(def p-world (@best-plan :world))
-(next-move p-world false)
-(eval p-world)
-
-(next-move @world false)
-
-(call "call?atFloor=1&to=UP")
-(next-cmd)
-(call "call?atFloor=0&to=UP")
-(next-cmd)
-(next-cmd)
-(next-cmd)
-
-(async/<!! world-chan)
-
-;; when nothing to do, goto middle and stay closed
-;; when empty and called, goto call floor
-;; when occupied take shortest path to all destinations (traveling salesman)
-;; but also open for any calls along the route.
-;; when arrive open remove that floor from destinations and recalc shortest path
-;;
-;; Possible future considerations:
-;;   - Could pay off to pick a longer path that has calls along it that want to go in
-;;   the right direction
-;;   - Probably need to wait for the enter/exit events before closing the door
-
-;; (defn submit-world
-;;   [w tp]
-;;   ())
-
-;; (defn plan [wc]
-;;   (loop [tp (Executors/newFixedThreadPool num-plan-threads)
-;;          w (async/<!! wc)]
-;;     (if w
-;;       (recur (submit-world w tp) (async/<!! wc)))))
