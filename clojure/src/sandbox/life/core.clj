@@ -23,6 +23,8 @@
 
 (def world (atom (init-world world-x world-y)))
 
+(def frame-rate 60) ;; frames per second
+(def frame-length (/ 1000 frame-rate)) ;; milli-sec
 
 ;;;;;;;;;;;;;;;;;
 
@@ -78,11 +80,25 @@
     (timestep w)
     (recur @world)))
 
+(defn init-ui [])
+
+(defn update-buffer [event])
+
+(defn draw-frame[])
+
+;; init the graphics
+;; loop on the pipeline, rendering any items to the buffer as they arrive
+;; use a timeout to make the buffer visible at 60 FPS
 (defn render []
-  ;; init the graphics
-  ;; loop on the pipeline, rendering any items to the buffer as they arrive
-  ;; use a timeout to make the buffer visible at 60 FPS
-)
+  (init-ui)
+  (loop [next-redraw (System/currentTimeMillis)
+         [event src] [nil nil]]
+    (let [redraw? (>= (System/currentTimeMillis) next-redraw)
+          nxt (if redraw? (+ next-redraw frame-length) next-redraw)]
+      (when (= src pipeline) (update-buffer event))
+      (when redraw? (draw-frame))
+      (recur nxt (alts!! [pipeline
+                          (timeout (- nxt (System/currentTimeMillis)))])))))
 
 (defn -main []
   (Thread. (simulate))
