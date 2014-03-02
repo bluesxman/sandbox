@@ -1,5 +1,6 @@
 package bluesxman.sandbox.life;
 
+import java.util.Random;
 import java.util.function.IntSupplier;
 
 import javafx.application.Application;
@@ -26,6 +27,7 @@ public class LifeView extends Application {
         GraphicsContext gc = canvas.getGraphicsContext2D();
         root.getChildren().add(canvas);
         primaryStage.setScene(new Scene(root));
+        Random rand = new Random();
 
         Runnable blinkSquare = () -> {
         	for(int i = 0; i < 1000; i++){
@@ -33,7 +35,7 @@ public class LifeView extends Application {
         		
         		Platform.runLater( () -> {
 	        		gc.setFill(black ? Color.BLACK : Color.WHITE);
-	        		gc.fillRect(10, 10, 10, 10); 
+	        		gc.fillRect(rand.nextInt(289), rand.nextInt(239), 10, 10); 
 	        		primaryStage.show();
         		});
         		
