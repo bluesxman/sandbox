@@ -1,6 +1,8 @@
 (ns sandbox.life.core
   (:require [clojure.core.async :refer :all]))
 (import '(java.util.concurrent Executors))
+;;(import '(bluesxman.sandbox.life LifeView))
+
 
 ;; See: http://en.wikipedia.org/wiki/Conway's_Game_of_Life
 
