@@ -24,13 +24,13 @@ import javafx.stage.Stage;
  * notify() called on the monitor after the show()
  */
 public class LifeView extends Application {
-	private GraphicsContext gc;
-	private Stage stage;
-	
+    private GraphicsContext gc;
+    private Stage stage;
+
     public static void main(String[] args) {
         launch(args);
     }
- 
+
     @Override
     public void start(Stage primaryStage) {
         primaryStage.setTitle("Drawing Operations Test");
@@ -42,24 +42,24 @@ public class LifeView extends Application {
         Random rand = new Random();
 
         Runnable blinkSquare = () -> {
-        	for(int i = 0; i < 1000; i++){
-        		boolean black = i % 2 == 0 ; 
-        		
-        		Platform.runLater( () -> {
-	        		gc.setFill(black ? Color.BLACK : Color.WHITE);
-	        		gc.fillRect(rand.nextInt(289), rand.nextInt(239), 10, 10); 
-	        		primaryStage.show();
-        		});
-        		
-        		try {
-        			Thread.sleep(17);
-        		} catch (InterruptedException e) {
-        			// TODO Auto-generated catch block
-        			e.printStackTrace();
-        		}
-        	}
+            for(int i = 0; i < 1000; i++){
+                boolean black = i % 2 == 0 ; 
+
+                Platform.runLater( () -> {
+                    gc.setFill(black ? Color.BLACK : Color.WHITE);
+                    gc.fillRect(rand.nextInt(289), rand.nextInt(239), 10, 10); 
+                    primaryStage.show();
+                });
+
+                try {
+                    Thread.sleep(17);
+                } catch (InterruptedException e) {
+                    // TODO Auto-generated catch block
+                    e.printStackTrace();
+                }
+            }
         };
-        
+
         (new Thread(blinkSquare, "Blink Thread")).start();
     }
 
@@ -72,23 +72,23 @@ public class LifeView extends Application {
      * @param frame The new image to render on the canvas
      */
     public void renderFrame(Image frame){
-    	// synch the whole section to guarantee the notifyAll()
-    	// is executed after we start waiting
-    	synchronized(frame){
-	    	Platform.runLater( () -> {
-	    		synchronized(frame){
-	    			gc.drawImage(frame, 0, 0);
-	    			stage.show();
-	    			frame.notifyAll();
-	    		}
-	    	});
-    	
-    		try {
-				frame.wait(); // monitor released, runLater lambda can execute
-			} catch (InterruptedException e) {
-				System.err.println("Interrupted waiting on frame redraw.");
-				e.printStackTrace();
-			}
-    	}
+        // synch the whole section to guarantee the notifyAll()
+        // is executed after we start waiting
+        synchronized(frame){
+            Platform.runLater( () -> {
+                synchronized(frame){
+                    gc.drawImage(frame, 0, 0);
+                    stage.show();
+                    frame.notifyAll();
+                }
+            });
+
+            try {
+                frame.wait(); // monitor released, runLater lambda can execute
+            } catch (InterruptedException e) {
+                System.err.println("Interrupted waiting on frame redraw.");
+                e.printStackTrace();
+            }
+        }
     }
 }
