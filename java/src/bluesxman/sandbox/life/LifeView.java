@@ -26,8 +26,8 @@ import javafx.stage.Stage;
  * notify() called on the monitor after the show()
  */
 public class LifeView extends Application {
-    private static final int CANVAS_X = 300;
-    private static final int CANVAS_Y = 250;
+    private static final int CANVAS_X = 1200;
+    private static final int CANVAS_Y = 600;
     private static final long FRAME_SIZE_NANO = 16666666;
     private static final int SQUARE_SIZE = 10;
     private static final PixelFormat<IntBuffer> PIXEL_FORMAT =  PixelFormat.getIntArgbInstance();
@@ -56,7 +56,7 @@ public class LifeView extends Application {
             Color color;
             long nextFrame = System.nanoTime() + FRAME_SIZE_NANO;
 
-            for(int i = 0; i < 1e6; i++){               
+            for(int i = 0; i < 1e8; i++){               
                 color = i % 2 == 0 ? Color.BLACK : Color.WHITE;
                 x = rand.nextInt(CANVAS_X - SQUARE_SIZE);
                 y = rand.nextInt(CANVAS_Y - SQUARE_SIZE);
