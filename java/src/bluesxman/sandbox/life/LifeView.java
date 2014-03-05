@@ -56,7 +56,7 @@ public class LifeView extends Application {
             Color color;
             long nextFrame = System.nanoTime() + FRAME_SIZE_NANO;
 
-            for(int i = 0; i < 10000; i++){               
+            for(int i = 0; i < 1e6; i++){               
                 color = i % 2 == 0 ? Color.BLACK : Color.WHITE;
                 x = rand.nextInt(CANVAS_X - SQUARE_SIZE);
                 y = rand.nextInt(CANVAS_Y - SQUARE_SIZE);
@@ -66,6 +66,8 @@ public class LifeView extends Application {
                     try {
                         invokeAndWaitFX( () -> {
                             canvasGC.drawImage(image, 0, 0);
+//                            canvasGC.setFill(Color.BLACK);
+//                            canvasGC.fillRect(rand.nextInt(CANVAS_X - SQUARE_SIZE), rand.nextInt(CANVAS_X - SQUARE_SIZE), 10, 10);
                             primaryStage.show();
                         });
                     } catch (InterruptedException e) {
@@ -84,7 +86,7 @@ public class LifeView extends Application {
     
     public static int[] createSquareBuffer(Color color){
         int[] buf = new int[SQUARE_SIZE * SQUARE_SIZE];
-        int c = color == Color.BLACK ? 0x000000FF : 0xFFFFFFFF;
+        int c = color == Color.BLACK ? 0xFF000000 : 0xFFFFFFFF;
         
         for(int i = 0; i < buf.length; i++){
             buf[i] = c;
