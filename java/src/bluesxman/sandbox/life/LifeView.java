@@ -56,7 +56,7 @@ public class LifeView extends Application {
             Color color;
             long nextFrame = System.nanoTime() + FRAME_SIZE_NANO;
 
-            for(int i = 0; i < 1e8; i++){               
+            for(int i = 0; i < 1e7; i++){               
                 color = i % 2 == 0 ? Color.BLACK : Color.WHITE;
                 x = rand.nextInt(CANVAS_X - SQUARE_SIZE);
                 y = rand.nextInt(CANVAS_Y - SQUARE_SIZE);

@@ -1,5 +1,5 @@
 (defproject sandbox "0.1.0-SNAPSHOT"
-  :description "FIXME: write description"
+  :description "Catch-all project "
   :url "http://example.com/FIXME"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
@@ -7,4 +7,6 @@
                  [org.clojure/core.async "0.1.267.0-0d7780-alpha"]
                  [compojure "1.1.6"]
                  [ring/ring-jetty-adapter "1.2.1"]]
-  :resource-paths ["resources/life.jar"])
+  :source-paths ["src"]
+  :java-source-paths ["../java/src"]
+  :javac-options ["-target" "1.8" "-source" "1.8"])
