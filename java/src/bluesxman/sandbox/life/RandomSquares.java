@@ -25,7 +25,7 @@ import javafx.stage.Stage;
  * (e.g. the image's).  In the lambda passed to Platform.runLater(), have a 
  * notify() called on the monitor after the show()
  */
-public class LifeView extends Application {
+public class RandomSquares extends Application {
     private static final int CANVAS_X = 1200;
     private static final int CANVAS_Y = 600;
     private static final long FRAME_SIZE_NANO = 16666666;
