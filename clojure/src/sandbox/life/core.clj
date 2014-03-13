@@ -16,9 +16,7 @@
           y (range world-y)]
     (.setSquare lv x y (get-in @world [x y])))
 
-  (.render lv)
-
-  (Thread/sleep 10))
+  (.render lv))
 
 (.setSquare lv 0 0 false)
 
