@@ -6,7 +6,8 @@
   :dependencies [[org.clojure/clojure "1.5.1"]
                  [org.clojure/core.async "0.1.267.0-0d7780-alpha"]
                  [compojure "1.1.6"]
-                 [ring/ring-jetty-adapter "1.2.1"]]
+                 [ring/ring-jetty-adapter "1.2.1"]
+                 [org.apache.commons/commons-math3 "3.0"]]
   :source-paths ["src"]
   :java-source-paths ["../java/src"]
   :javac-options ["-target" "1.8" "-source" "1.8"])
