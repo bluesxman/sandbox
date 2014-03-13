@@ -25,71 +25,63 @@ import javafx.stage.Stage;
  * (e.g. the image's).  In the lambda passed to Platform.runLater(), have a 
  * notify() called on the monitor after the show()
  */
-public class LifeView extends Application {
+public class RandomSquares extends Application {
     private static final int CANVAS_X = 1200;
     private static final int CANVAS_Y = 600;
-    private static final int SQUARE_SIZE = 5;
+    private static final long FRAME_SIZE_NANO = 16666666;
+    private static final int SQUARE_SIZE = 10;
     private static final PixelFormat<IntBuffer> PIXEL_FORMAT =  PixelFormat.getIntArgbInstance();
     private static final int[] BLACK_SQUARE_BUF = createSquareBuffer(Color.BLACK);
     private static final int[] WHITE_SQUARE_BUF = createSquareBuffer(Color.WHITE);    
   
-    private static LifeView instance;
     
-    private WritableImage buffer;
-    private GraphicsContext canvasGC;
-    private Stage primaryStage;
-    
-    public static LifeView createInstance() throws InterruptedException {
-        synchronized(LifeView.class){
-            if(instance == null){
-                (new Thread(() -> launch(new String[]{}), "LifeView")).start();
-                while(instance == null){
-                    System.out.println("Waiting on app to launch");
-                    LifeView.class.wait();
-                }
-            }
-            System.out.println("Launched!");
-            return instance;
-        }
+    public static void main(String[] args) {
+        launch(args);
     }
-    
-    public void setSquare(int x, int y, boolean alive){
-        drawSquareToBuffer(
-                buffer, 
-                alive ? BLACK_SQUARE_BUF : WHITE_SQUARE_BUF, 
-                x * SQUARE_SIZE, 
-                y * SQUARE_SIZE);
-    }
-    
-    public void render() throws InterruptedException{
-        invokeAndWaitFX( () -> {
-            canvasGC.drawImage(buffer, 0, 0);
-            primaryStage.show();
-        });
-    }
-    
-    private static void setInstance(LifeView app){
-        synchronized(LifeView.class){
-            if(instance == null){
-                instance = app;
-            }
-            LifeView.class.notifyAll();
-        }
-    }
-    
+
     @Override
     public void start(Stage primaryStage) {
         Group root = new Group();
         Canvas canvas = new Canvas(CANVAS_X, CANVAS_Y);
-        canvasGC = canvas.getGraphicsContext2D();
-        buffer = new WritableImage(CANVAS_X, CANVAS_Y);
-        this.primaryStage = primaryStage;
+        GraphicsContext canvasGC = canvas.getGraphicsContext2D();
+        Random rand = new Random();
+        WritableImage image = new WritableImage(CANVAS_X, CANVAS_Y);
         
-        primaryStage.setTitle("Life");
+        primaryStage.setTitle("Life View Test");
         root.getChildren().add(canvas);
         primaryStage.setScene(new Scene(root));
+
+        Runnable blinkSquares = () -> {
+            int x, y;
+            Color color;
+            long nextFrame = System.nanoTime() + FRAME_SIZE_NANO;
+
+            for(int i = 0; i < 1e7; i++){               
+                color = i % 2 == 0 ? Color.BLACK : Color.WHITE;
+                x = rand.nextInt(CANVAS_X - SQUARE_SIZE);
+                y = rand.nextInt(CANVAS_Y - SQUARE_SIZE);
+                drawSquareToBuffer(image, color, x, y);
+
+                if(System.nanoTime() >= nextFrame){
+                    try {
+                        invokeAndWaitFX( () -> {
+                            canvasGC.drawImage(image, 0, 0);
+//                            canvasGC.setFill(Color.BLACK);
+//                            canvasGC.fillRect(rand.nextInt(CANVAS_X - SQUARE_SIZE), rand.nextInt(CANVAS_X - SQUARE_SIZE), 10, 10);
+                            primaryStage.show();
+                        });
+                    } catch (InterruptedException e) {
+                        // TODO Auto-generated catch block
+                        e.printStackTrace();
+                    }
+                    nextFrame += FRAME_SIZE_NANO;
+                }
+            }
+        };
+
+        (new Thread(blinkSquares, "Blink Thread")).start();
         
-        setInstance(this);
+        
     }
     
     public static int[] createSquareBuffer(Color color){
@@ -103,8 +95,10 @@ public class LifeView extends Application {
         return buf;
     }
     
-    public static void drawSquareToBuffer(WritableImage buffer, int[] square, int x, int y){
-        buffer.getPixelWriter().setPixels(x, y, SQUARE_SIZE, SQUARE_SIZE, PIXEL_FORMAT, square, 0, 0);
+    public static WritableImage drawSquareToBuffer(WritableImage buffer, Color color, int x, int y){
+        int[] buf = color == Color.BLACK ? BLACK_SQUARE_BUF : WHITE_SQUARE_BUF;
+        buffer.getPixelWriter().setPixels(x, y, SQUARE_SIZE, SQUARE_SIZE, PIXEL_FORMAT, buf, 0, 0);
+        return buffer;
     }
 
     /**
