@@ -1,17 +1,37 @@
 (ns sandbox.life.core
-  (:require [clojure.core.async :refer :all]))
+  (:require [clojure.core.async :refer [>!! <!! chan alts!! timeout]]))
 (import '(java.util.concurrent Executors))
 (import '(bluesxman.sandbox.life LifeView))
 
-;; (def lv (LifeView.))
+(def lv (LifeView/createInstance))
 
-;; (. lv launch nil)
-(LifeView/main nil)
+
+(doseq [i (range 100000)]
+  (let [w @world]
+    (doseq [x (range world-x)
+            y (range world-y)]
+      (step-cell w x y)))
+
+  (doseq [x (range world-x)
+          y (range world-y)]
+    (.setSquare lv x y (get-in @world [x y])))
+
+  (.render lv)
+
+  (Thread/sleep 10))
+
+(.setSquare lv 0 0 false)
+
+;; (timestep @world)
+
+(neighbors @world 3 0)
+
+
 
 ;; See: http://en.wikipedia.org/wiki/Conway's_Game_of_Life
 
 (def sim-threads 4)
-(def world-x 190)
+(def world-x 240)
 (def world-y 120)
 
 (def sim-pool (Executors/newFixedThreadPool sim-threads))
@@ -34,10 +54,13 @@
 
 ;;;;;;;;;;;;;;;;;
 
+;; (defn update! [x y v]
+;;   (do
+;;     (swap! world update-in [x y] v)
+;;     (>!! pipeline [x y v])))
 (defn update! [x y v]
   (do
-    (swap! world update-in [x y] v)
-    (>!! pipeline [x y v])))
+    (swap! world assoc-in [x y] v)))
 
 (defn state-at [w x y]
   (get-in w [x y]))
