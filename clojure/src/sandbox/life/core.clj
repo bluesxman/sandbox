@@ -1,30 +1,24 @@
 (ns sandbox.life.core
-  (:require [clojure.core.async :refer [>!! <!! chan alts!! timeout]]))
+  (:require [clojure.core.async :refer [chan >!! <!! alts!! timeout]]))
 (import '(java.util.concurrent Executors))
 (import '(bluesxman.sandbox.life LifeView))
 
 (def lv (LifeView/createInstance))
 
 
-(doseq [i (range 100000)]
-  (let [w @world]
-    (doseq [x (range world-x)
-            y (range world-y)]
-      (step-cell w x y)))
+;; (doseq [i (range 100000)]
+;;   (let [w @world]
+;;     (doseq [x (range world-x)
+;;             y (range world-y)]
+;;       (step-cell w x y)))
+;;   (doseq [x (range world-x)
+;;           y (range world-y)]
+;;     (.setSquare lv x y (get-in @world [x y])))
+;;   (.render lv))
 
-  (doseq [x (range world-x)
-          y (range world-y)]
-    (.setSquare lv x y (get-in @world [x y])))
+;; (.setSquare lv 0 0 false)
 
-  (.render lv))
-
-(.setSquare lv 0 0 false)
-
-;; (timestep @world)
-
-(neighbors @world 3 0)
-
-
+;; (neighbors @world 3 0)
 
 ;; See: http://en.wikipedia.org/wiki/Conway's_Game_of_Life
 
@@ -45,20 +39,53 @@
       (vec
        (repeatedly max-y (fn [] (< (rand) 0.5))))))))
 
-(def world (atom (init-world world-x world-y)))
+(def world (atom (init-world world-x (/ world-y 2))))
+
+;; (doseq [i (range 1000000)]
+;;   (timestep @world)
+;;   (.render lv))
+
+;; (<!! pipeline)
 
 (def frame-rate 60) ;; frames per second
 (def frame-length (/ 1000 frame-rate)) ;; milli-sec
 
 ;;;;;;;;;;;;;;;;;
 
-;; (defn update! [x y v]
-;;   (do
-;;     (swap! world update-in [x y] v)
-;;     (>!! pipeline [x y v])))
+;; (defn init-ui []
+;;   (LifeView/createInstance))
+
+(defn update-buffer [lv event]
+  (let [[x y v] event]
+    (.setSquare lv x y v)))
+
+(defn draw-frame [lv]
+  (.render lv))
+
+;; init the graphics
+;; loop on the pipeline, rendering any items to the buffer as they arrive
+;; use a timeout to make the buffer visible at 60 FPS
+(defn render []
+    (loop [next-redraw (System/currentTimeMillis)
+           [event src] [nil nil]]
+      (let [redraw? (>= (System/currentTimeMillis) next-redraw)
+            nxt (if redraw? (+ next-redraw frame-length) next-redraw)]
+        (when (= src pipeline) (update-buffer lv event))
+        (when redraw? (draw-frame lv))
+        (recur nxt (alts!! [pipeline
+                            (timeout (- nxt (System/currentTimeMillis)))])))))
+
+
+;;;;;;;;;;;;;;;;;
+
+(defn update! [x y v]
+  (swap! world assoc-in [x y] v)
+  (>!! pipeline [x y v]))
+
 (defn update! [x y v]
   (do
-    (swap! world assoc-in [x y] v)))
+    (swap! world assoc-in [x y] v)
+    (update-buffer lv [x y v])))
 
 (defn state-at [w x y]
   (get-in w [x y]))
@@ -91,13 +118,13 @@
 
 (defn create-task [w xs]
   (fn []
-    (for [x xs
-          y (range world-y)]
+    (doseq [x xs
+            y (range world-y)]
       (step-cell w x y))))
 
 (defn timestep [w]
   (let [size (/ world-x sim-threads)
-        parts (clojure.core/partition size size nil (range world-x))
+        parts (partition size (range world-x))
         tasks (map #(create-task w %) parts)]
     (doseq [fut (.invokeAll sim-pool tasks)]
       (.get fut))))
@@ -107,26 +134,18 @@
     (timestep w)
     (recur @world)))
 
-(defn init-ui [])
-
-(defn update-buffer [event])
-
-(defn draw-frame[])
-
-;; init the graphics
-;; loop on the pipeline, rendering any items to the buffer as they arrive
-;; use a timeout to make the buffer visible at 60 FPS
-(defn render []
-  (init-ui)
-  (loop [next-redraw (System/currentTimeMillis)
-         [event src] [nil nil]]
-    (let [redraw? (>= (System/currentTimeMillis) next-redraw)
-          nxt (if redraw? (+ next-redraw frame-length) next-redraw)]
-      (when (= src pipeline) (update-buffer event))
-      (when redraw? (draw-frame))
-      (recur nxt (alts!! [pipeline
-                          (timeout (- nxt (System/currentTimeMillis)))])))))
 
 (defn -main []
-  (Thread. (simulate))
+  (.start (Thread. (simulate)))
   (render))
+
+;; (-main)
+
+;; (let [parts (partition (/ world-x sim-threads) (range world-x))
+;;       tasks (map #(create-task @world %) parts)]
+;;   (doseq [t tasks]
+;;     (t)))
+
+;; (def step-section (create-task @world 0 60))
+
+;; (step-section)
