@@ -1,7 +1,7 @@
 (ns sandbox.life.core
-  (:require [clojure.core.async :refer [chan >!! <!! alts!! timeout]]))
-(import '(java.util.concurrent Executors))
-(import '(bluesxman.sandbox.life LifeView))
+  (:require [clojure.core.async :refer [chan >!! <!! alts!! timeout]])
+  (:import [java.util.concurrent Executors]
+           [bluesxman.sandbox.life LifeView]))
 
 (def lv (LifeView/createInstance))
 
@@ -28,7 +28,7 @@
 
 (def sim-pool (Executors/newFixedThreadPool sim-threads))
 
-(def pipeline-buffer 100)
+(def pipeline-buffer 10000)
 (def pipeline (chan pipeline-buffer))
 
 (defn init-world [max-x max-y]
@@ -41,14 +41,10 @@
 
 (def world (atom (init-world world-x (/ world-y 2))))
 
-;; (doseq [i (range 1000000)]
-;;   (timestep @world)
-;;   (.render lv))
-
 ;; (<!! pipeline)
 
 (def frame-rate 60) ;; frames per second
-(def frame-length (/ 1000 frame-rate)) ;; milli-sec
+(def frame-length (long (/ 1000 frame-rate))) ;; milli-sec
 
 ;;;;;;;;;;;;;;;;;
 
@@ -62,11 +58,12 @@
 (defn draw-frame [lv]
   (.render lv))
 
+
 ;; init the graphics
 ;; loop on the pipeline, rendering any items to the buffer as they arrive
 ;; use a timeout to make the buffer visible at 60 FPS
 (defn render []
-    (loop [next-redraw (System/currentTimeMillis)
+    (loop [next-redraw 0
            [event src] [nil nil]]
       (let [redraw? (>= (System/currentTimeMillis) next-redraw)
             nxt (if redraw? (+ next-redraw frame-length) next-redraw)]
@@ -76,16 +73,54 @@
                             (timeout (- nxt (System/currentTimeMillis)))])))))
 
 
+
+;; (future simulate)
+
+;; (future (dotimes [n 1000] (timestep @world)))
+
+;; (loop [next-redraw (System/currentTimeMillis)
+;;        event nil]
+;;   (let [redraw? (>= (System/currentTimeMillis) next-redraw)
+;;         nxt (if redraw? (+ next-redraw frame-length) next-redraw)]
+;;     (when event (update-buffer lv event))
+;;     (when redraw? (draw-frame lv))
+;;     (recur nxt (<!! pipeline))))
+
+;; (<!! pipeline)
+
+;;     (println [event next-redraw redraw? nxt (type (- nxt (System/currentTimeMillis)))])
+;; (timestep @world)
+
+;; (def nxt (+ (System/currentTimeMillis) frame-length))
+;; (type nxt)
+;; (alts!! [(timeout (- nxt (System/currentTimeMillis)))])
+;; (alts!! [(timeout (- (long 1000) (long 500)))])
+;; (timeout 500)
+;; (alts!! [pipeline])
+
+;; (<!! pipeline)
+
+
+
 ;;;;;;;;;;;;;;;;;
 
-(defn update! [x y v]
-  (swap! world assoc-in [x y] v)
-  (>!! pipeline [x y v]))
+;; (defn update! [x y v]
+;;   (swap! world assoc-in [x y] v)
+;;   (>!! pipeline [x y v]))
 
 (defn update! [x y v]
   (do
     (swap! world assoc-in [x y] v)
     (update-buffer lv [x y v])))
+
+(doseq [i (range 1000000)]
+  (timestep @world)
+  (.render lv))
+(reset! world (init-world world-x (/ world-y 2)))
+(doseq [x (range world-x)
+        y (range world-y)]
+  (.setSquare lv x y false))
+
 
 (defn state-at [w x y]
   (get-in w [x y]))
@@ -140,12 +175,3 @@
   (render))
 
 ;; (-main)
-
-;; (let [parts (partition (/ world-x sim-threads) (range world-x))
-;;       tasks (map #(create-task @world %) parts)]
-;;   (doseq [t tasks]
-;;     (t)))
-
-;; (def step-section (create-task @world 0 60))
-
-;; (step-section)
