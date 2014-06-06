@@ -7,10 +7,10 @@
 
 ;;;; Setup
 
-(defonce lv (LifeView/createInstance))
-
 (def world-x 240)
 (def world-y 120)
+
+(defonce lv (LifeView/createInstance))
 
 (def sim-threads 8)
 (def sim-pool (Executors/newFixedThreadPool sim-threads))
@@ -39,6 +39,7 @@
   (doseq [x (range world-x)
           y (range world-y)]
     (.setSquare lv x y false)))
+
 
 ;;;; Simulation
 
@@ -112,4 +113,5 @@
 ;;                                      (timestep! @world)
 ;;                                      (draw-frame!)
 ;;                                      (when sleep? (Thread/sleep sleep-time)))))))
+
 
