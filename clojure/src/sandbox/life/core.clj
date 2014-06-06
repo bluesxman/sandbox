@@ -15,15 +15,16 @@
 (def sim-threads 8)
 (def sim-pool (Executors/newFixedThreadPool sim-threads))
 
-(defn init-world [max-x max-y]
+(defn init-world [xmin, xmax, ymin, ymax]
   (vec
-   (repeatedly
-    max-x
-    (fn []
-      (vec
-       (repeatedly max-y (fn [] (< (rand) 0.5))))))))
+   (for [x (range world-x)]
+     (vec
+      (for [y (range world-y)]
+        (if (and (< xmin x xmax) (< ymin y ymax))
+          (< (rand) 0.5)
+          false))))))
 
-(def world (atom (init-world world-x world-y)))
+(def world (atom (init-world 0 world-x 0 world-y)))
 
 
 ;;;; Rendering
@@ -100,11 +101,12 @@
 
 ;; (def sim-threads 8)
 
-;; (erase!)
-;; (reset! world (init-world world-x world-y))
-
 ;; (def go? false)
 ;; (def go? true)
+
+;; (erase!)
+;; (reset! world (init-world 40 200 30 90))
+
 ;; (def sleep? true)
 ;; (def sleep? false)
 ;; (def sleep-time 17)
