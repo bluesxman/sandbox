@@ -35,13 +35,12 @@
 (defn draw-frame! []
   (.render lv))
 
+(defn erase! []
+  (doseq [x (range world-x)
+          y (range world-y)]
+    (.setSquare lv x y false)))
 
 ;;;; Simulation
-
-(defn update! [x y v]
-  (do
-    (swap! world assoc-in [x y] v)
-    (update-buffer! lv [x y v])))
 
 (defn state-at [w x y]
   (get-in w [x y]))
@@ -65,6 +64,11 @@
     (if (state-at w x y)
       (<= 2 n 3)
       (= n 3))))
+
+(defn update! [x y v]
+  (do
+    (swap! world assoc-in [x y] v)
+    (update-buffer! lv [x y v])))
 
 (defn step-cell! [w x y]
   (let [old (state-at w x y)
@@ -94,8 +98,8 @@
 ;;;; Execution
 
 ;; (def sim-threads 8)
-;; (def sim-pool (Executors/newFixedThreadPool sim-threads))
 
+;; (erase!)
 ;; (reset! world (init-world world-x world-y))
 
 ;; (def go? false)
