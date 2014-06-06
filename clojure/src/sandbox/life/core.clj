@@ -29,8 +29,6 @@
 
 (def world (atom (init-world world-x (/ world-y 2))))
 
-;; (<!! pipeline)
-
 (def frame-rate 60) ;; frames per second
 (def frame-length (long (/ 1000 frame-rate))) ;; milli-sec
 
@@ -57,36 +55,6 @@
         (recur nxt (alts!! [pipeline
                             (timeout (- nxt (System/currentTimeMillis)))])))))
 
-
-
-;; (future simulate)
-
-;; (future (dotimes [n 1000] (timestep @world)))
-
-;; (loop [next-redraw (System/currentTimeMillis)
-;;        event nil]
-;;   (let [redraw? (>= (System/currentTimeMillis) next-redraw)
-;;         nxt (if redraw? (+ next-redraw frame-length) next-redraw)]
-;;     (when event (update-buffer lv event))
-;;     (when redraw? (draw-frame lv))
-;;     (recur nxt (<!! pipeline))))
-
-;; (<!! pipeline)
-
-;;     (println [event next-redraw redraw? nxt (type (- nxt (System/currentTimeMillis)))])
-;; (timestep @world)
-
-;; (def nxt (+ (System/currentTimeMillis) frame-length))
-;; (type nxt)
-;; (alts!! [(timeout (- nxt (System/currentTimeMillis)))])
-;; (alts!! [(timeout (- (long 1000) (long 500)))])
-;; (timeout 500)
-;; (alts!! [pipeline])
-
-;; (<!! pipeline)
-
-
-
 ;;;;;;;;;;;;;;;;;
 
 ;; (defn update! [x y v]
@@ -97,42 +65,6 @@
   (do
     (swap! world assoc-in [x y] v)
     (update-buffer lv [x y v])))
-
-
-(doseq [i (range 1000000)]
-  (timestep @world)
-  (draw-frame)
-  (Thread/sleep 16))
-
-(let [w (init-world world-x (/ world-y 2))]
-  (reset! world w))
-
-(def go? true)
-(def go? false)
-(def sleep? true)
-(def sleep? false)
-(def sleep-time 160)
-
-(try
-  (.start (Thread. (fn [] (while go? (do (timestep @world)
-                                       (draw-frame)
-                                       (when sleep? (Thread/sleep sleep-time)))))))
-  (catch Exception e
-    (str e)))
-
-(future
-  (fn [] (while go? (do (timestep @world)
-                      (draw-frame)
-                      (when sleep? (Thread/sleep sleep-time))))))
-
-;; (doseq [x (range world-x)
-;;         y (range world-y)]
-;;   (.setSquare lv x y false))
-
-(try
-  (/ 1 0)
-  (catch Exception e (.toString e)))
-
 
 (defn state-at [w x y]
   (get-in w [x y]))
@@ -187,3 +119,20 @@
   (render))
 
 (-main)
+
+
+;;;;;;;;
+
+
+;; (reset! world (init-world world-x (/ world-y 2)))
+
+;; (def go? true)
+;; (def go? false)
+;; (def sleep? true)
+;; (def sleep? false)
+;; (def sleep-time 160)
+
+;; (.start (Thread. (fn [] (while go? (do (timestep @world)
+;;                                      (draw-frame)
+;;                                      (when sleep? (Thread/sleep sleep-time)))))))
+
