@@ -3,29 +3,17 @@
   (:import [java.util.concurrent Executors]
            [bluesxman.sandbox.life LifeView]))
 
-(def lv (LifeView/createInstance))
-
-
-;; (doseq [i (range 100000)]
-;;   (let [w @world]
-;;     (doseq [x (range world-x)
-;;             y (range world-y)]
-;;       (step-cell w x y)))
-;;   (doseq [x (range world-x)
-;;           y (range world-y)]
-;;     (.setSquare lv x y (get-in @world [x y])))
-;;   (.render lv))
-
-;; (.setSquare lv 0 0 false)
-
-;; (neighbors @world 3 0)
-
 ;; See: http://en.wikipedia.org/wiki/Conway's_Game_of_Life
 
-(def sim-threads 4)
+
+;;;; Setup
+
+(defonce lv (LifeView/createInstance))
+
 (def world-x 240)
 (def world-y 120)
 
+(def sim-threads 8)
 (def sim-pool (Executors/newFixedThreadPool sim-threads))
 
 (def pipeline-buffer 10000)
@@ -48,14 +36,11 @@
 
 ;;;;;;;;;;;;;;;;;
 
-;; (defn init-ui []
-;;   (LifeView/createInstance))
-
 (defn update-buffer [lv event]
   (let [[x y v] event]
     (.setSquare lv x y v)))
 
-(defn draw-frame [lv]
+(defn draw-frame []
   (.render lv))
 
 
@@ -68,7 +53,7 @@
       (let [redraw? (>= (System/currentTimeMillis) next-redraw)
             nxt (if redraw? (+ next-redraw frame-length) next-redraw)]
         (when (= src pipeline) (update-buffer lv event))
-        (when redraw? (draw-frame lv))
+        (when redraw? (draw-frame))
         (recur nxt (alts!! [pipeline
                             (timeout (- nxt (System/currentTimeMillis)))])))))
 
@@ -113,13 +98,40 @@
     (swap! world assoc-in [x y] v)
     (update-buffer lv [x y v])))
 
+
 (doseq [i (range 1000000)]
   (timestep @world)
-  (.render lv))
-(reset! world (init-world world-x (/ world-y 2)))
-(doseq [x (range world-x)
-        y (range world-y)]
-  (.setSquare lv x y false))
+  (draw-frame)
+  (Thread/sleep 16))
+
+(let [w (init-world world-x (/ world-y 2))]
+  (reset! world w))
+
+(def go? true)
+(def go? false)
+(def sleep? true)
+(def sleep? false)
+(def sleep-time 160)
+
+(try
+  (.start (Thread. (fn [] (while go? (do (timestep @world)
+                                       (draw-frame)
+                                       (when sleep? (Thread/sleep sleep-time)))))))
+  (catch Exception e
+    (str e)))
+
+(future
+  (fn [] (while go? (do (timestep @world)
+                      (draw-frame)
+                      (when sleep? (Thread/sleep sleep-time))))))
+
+;; (doseq [x (range world-x)
+;;         y (range world-y)]
+;;   (.setSquare lv x y false))
+
+(try
+  (/ 1 0)
+  (catch Exception e (.toString e)))
 
 
 (defn state-at [w x y]
@@ -171,7 +183,7 @@
 
 
 (defn -main []
-  (.start (Thread. (simulate)))
+  (.start (Thread. (fn [] (simulate))))
   (render))
 
-;; (-main)
+(-main)
