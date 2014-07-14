@@ -1,126 +1,48 @@
 (ns sandbox.life.core
-  (:require [clojure.core.async :refer [chan >!! <!! alts!! timeout]])
   (:import [java.util.concurrent Executors]
            [bluesxman.sandbox.life LifeView]))
 
-(def lv (LifeView/createInstance))
-
-
-;; (doseq [i (range 100000)]
-;;   (let [w @world]
-;;     (doseq [x (range world-x)
-;;             y (range world-y)]
-;;       (step-cell w x y)))
-;;   (doseq [x (range world-x)
-;;           y (range world-y)]
-;;     (.setSquare lv x y (get-in @world [x y])))
-;;   (.render lv))
-
-;; (.setSquare lv 0 0 false)
-
-;; (neighbors @world 3 0)
-
 ;; See: http://en.wikipedia.org/wiki/Conway's_Game_of_Life
 
-(def sim-threads 4)
+
+;;;; Setup
+
 (def world-x 240)
 (def world-y 120)
 
+(defonce lv (LifeView/createInstance))
+
+(def sim-threads 8)
 (def sim-pool (Executors/newFixedThreadPool sim-threads))
 
-(def pipeline-buffer 10000)
-(def pipeline (chan pipeline-buffer))
-
-(defn init-world [max-x max-y]
+(defn init-world [xmin, xmax, ymin, ymax]
   (vec
-   (repeatedly
-    max-x
-    (fn []
-      (vec
-       (repeatedly max-y (fn [] (< (rand) 0.5))))))))
+   (for [x (range world-x)]
+     (vec
+      (for [y (range world-y)]
+        (if (and (< xmin x xmax) (< ymin y ymax))
+          (< (rand) 0.5)
+          false))))))
 
-(def world (atom (init-world world-x (/ world-y 2))))
+(def world (atom (init-world 0 world-x 0 world-y)))
 
-;; (<!! pipeline)
 
-(def frame-rate 60) ;; frames per second
-(def frame-length (long (/ 1000 frame-rate))) ;; milli-sec
+;;;; Rendering
 
-;;;;;;;;;;;;;;;;;
-
-;; (defn init-ui []
-;;   (LifeView/createInstance))
-
-(defn update-buffer [lv event]
+(defn update-buffer! [lv event]
   (let [[x y v] event]
     (.setSquare lv x y v)))
 
-(defn draw-frame [lv]
+(defn draw-frame! []
   (.render lv))
 
-
-;; init the graphics
-;; loop on the pipeline, rendering any items to the buffer as they arrive
-;; use a timeout to make the buffer visible at 60 FPS
-(defn render []
-    (loop [next-redraw 0
-           [event src] [nil nil]]
-      (let [redraw? (>= (System/currentTimeMillis) next-redraw)
-            nxt (if redraw? (+ next-redraw frame-length) next-redraw)]
-        (when (= src pipeline) (update-buffer lv event))
-        (when redraw? (draw-frame lv))
-        (recur nxt (alts!! [pipeline
-                            (timeout (- nxt (System/currentTimeMillis)))])))))
+(defn erase! []
+  (doseq [x (range world-x)
+          y (range world-y)]
+    (.setSquare lv x y false)))
 
 
-
-;; (future simulate)
-
-;; (future (dotimes [n 1000] (timestep @world)))
-
-;; (loop [next-redraw (System/currentTimeMillis)
-;;        event nil]
-;;   (let [redraw? (>= (System/currentTimeMillis) next-redraw)
-;;         nxt (if redraw? (+ next-redraw frame-length) next-redraw)]
-;;     (when event (update-buffer lv event))
-;;     (when redraw? (draw-frame lv))
-;;     (recur nxt (<!! pipeline))))
-
-;; (<!! pipeline)
-
-;;     (println [event next-redraw redraw? nxt (type (- nxt (System/currentTimeMillis)))])
-;; (timestep @world)
-
-;; (def nxt (+ (System/currentTimeMillis) frame-length))
-;; (type nxt)
-;; (alts!! [(timeout (- nxt (System/currentTimeMillis)))])
-;; (alts!! [(timeout (- (long 1000) (long 500)))])
-;; (timeout 500)
-;; (alts!! [pipeline])
-
-;; (<!! pipeline)
-
-
-
-;;;;;;;;;;;;;;;;;
-
-;; (defn update! [x y v]
-;;   (swap! world assoc-in [x y] v)
-;;   (>!! pipeline [x y v]))
-
-(defn update! [x y v]
-  (do
-    (swap! world assoc-in [x y] v)
-    (update-buffer lv [x y v])))
-
-(doseq [i (range 1000000)]
-  (timestep @world)
-  (.render lv))
-(reset! world (init-world world-x (/ world-y 2)))
-(doseq [x (range world-x)
-        y (range world-y)]
-  (.setSquare lv x y false))
-
+;;;; Simulation
 
 (defn state-at [w x y]
   (get-in w [x y]))
@@ -145,33 +67,53 @@
       (<= 2 n 3)
       (= n 3))))
 
-(defn step-cell [w x y]
+(defn update! [x y v]
+  (do
+    (swap! world assoc-in [x y] v)
+    (update-buffer! lv [x y v])))
+
+(defn step-cell! [w x y]
   (let [old (state-at w x y)
         new (next-state w x y)]
     (when (not= old new)
       (update! x y new))))
 
-(defn create-task [w xs]
+(defn create-task! [w xs]
   (fn []
     (doseq [x xs
             y (range world-y)]
-      (step-cell w x y))))
+      (step-cell! w x y))))
 
-(defn timestep [w]
+(defn timestep! [w]
   (let [size (/ world-x sim-threads)
         parts (partition size (range world-x))
-        tasks (map #(create-task w %) parts)]
+        tasks (map #(create-task! w %) parts)]
     (doseq [fut (.invokeAll sim-pool tasks)]
       (.get fut))))
 
-(defn simulate []
+(defn simulate! []
   (loop [w @world]
-    (timestep w)
+    (timestep! w)
     (recur @world)))
 
 
-(defn -main []
-  (.start (Thread. (simulate)))
-  (render))
+;;;; Execution
 
-;; (-main)
+;; (def sim-threads 8)
+
+;; (def go? false)
+;; (def go? true)
+
+;; (erase!)
+;; (reset! world (init-world 40 200 30 90))
+
+;; (def sleep? true)
+;; (def sleep? false)
+;; (def sleep-time 17)
+
+;; (.start (Thread. (fn [] (while go? (do
+;;                                      (timestep! @world)
+;;                                      (draw-frame!)
+;;                                      (when sleep? (Thread/sleep sleep-time)))))))
+
+
