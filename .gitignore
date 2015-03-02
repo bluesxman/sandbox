@@ -213,3 +213,7 @@ pip-log.txt
 
 #Mr Developer
 .mr.developer.cfg
+/clojure/sandbox.iml
+/clojure/.idea
+/clojure/sandbox.iml
+/clojure/*.iml
